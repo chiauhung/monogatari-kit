@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+.yarn/
+
+# Build
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Env
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test
+coverage/
+
+# K8s local
+kubeconfig.local
+*.kubeconfig
+
+# Helm
+charts/*.tgz
