@@ -359,7 +359,7 @@ Based on [stack reference](./stack-reference.md) + 这次 6 个 driver 问题:
 | 1 | Rich text editor — Tiptap vs Plate? | At 5.2.3 implementation |
 | ~~2~~ | ~~AI text provider~~ | ✅ **OpenRouter** (closed) |
 | ~~3~~ | ~~K8s portability level~~ | ✅ **Level B strict self-host** (closed) |
-| 4 | K8s cluster — 本地 kind 起步 + 后期 GKE 部署? 还是直接 GKE? | Scaffold 第 0 步 |
+| ~~4~~ | ~~K8s cluster — 本地起步 + 后期 GKE?~~ | ✅ **Docker Desktop k8s 本地, GKE on M7** (closed 2026-05-07) |
 | ~~5~~ | ~~Auth library~~ | ✅ **BetterAuth** (closed) |
 | 6 | Nano Banana per-image cost & quota | 在做 5.3 之前估 |
 | 7 | Soft-lock TTL — 60s? 120s? 5min? | 先 60s, 用了再 tune |
@@ -375,15 +375,15 @@ Based on [stack reference](./stack-reference.md) + 这次 6 个 driver 问题:
 1. ✅ Discuss requirements (Q1-Q5 — 2026-05-01)
 2. ✅ PRD v1 → v2 (queue + OpenRouter + Prompt schema added — 2026-05-01)
 3. ✅ Hosting locked → Level B strict self-host (2026-05-04)
-4. ⏳ **Quiz format sign-off** (current step)
-5. PRD v3 final lock
-6. Scaffold (Milestone 1)
+4. ✅ Quiz format signed off (2026-05-04)
+5. ✅ PRD v3 final lock (2026-05-04)
+6. ⏳ Scaffold (Milestone 1) — current step
 
 ### Milestones (7 total)
 
 | # | Milestone | What "done" looks like |
 |---|-----------|------------------------|
-| 1 | Local k8s baseline | kind cluster up; Postgres (CNPG) + Redis + MinIO running; can `kubectl exec` into each |
+| 1 | Local k8s baseline | Docker Desktop k8s up; Postgres (CNPG) + Redis + MinIO running; can `kubectl exec` into each |
 | 2 | Helm chart skeleton | `helm install vn-platform ./chart` deploys app shell + BetterAuth login page works |
 | 3 | Project + collab + recycle bin | Create project, invite teammate, soft-delete, restore from bin |
 | 4 | Story tree + chapter editor + soft-lock | DAG visible in xyflow; edit chapter text; "X is editing" badge appears |
