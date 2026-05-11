@@ -16,9 +16,12 @@ CONTEXT="docker-desktop"
 echo "Scaling monogatari-kit workloads to 0 in context: $CONTEXT"
 echo
 
-echo "→ Postgres (CNPG Cluster CRD)"
-kubectl --context "$CONTEXT" patch cluster vn-postgres -n vn-data \
-  --type=merge -p '{"spec":{"instances":0}}'
+echo "→ Postgres (CNPG hibernation)"
+# CNPG rejects spec.instances < 1 via webhook. The supported pause mechanism
+# is the cnpg.io/hibernation annotation: operator deletes the pod and
+# StatefulSet while preserving PVCs.
+kubectl --context "$CONTEXT" annotate cluster vn-postgres -n vn-data \
+  cnpg.io/hibernation=on --overwrite
 
 echo "→ Redis (StatefulSet)"
 kubectl --context "$CONTEXT" scale statefulset vn-redis -n vn-cache --replicas=0

@@ -8,9 +8,9 @@ CONTEXT="docker-desktop"
 echo "Scaling monogatari-kit workloads back up in context: $CONTEXT"
 echo
 
-echo "→ Postgres (CNPG Cluster CRD)"
-kubectl --context "$CONTEXT" patch cluster vn-postgres -n vn-data \
-  --type=merge -p '{"spec":{"instances":1}}'
+echo "→ Postgres (un-hibernate)"
+kubectl --context "$CONTEXT" annotate cluster vn-postgres -n vn-data \
+  cnpg.io/hibernation=off --overwrite
 
 echo "→ Redis (StatefulSet)"
 kubectl --context "$CONTEXT" scale statefulset vn-redis -n vn-cache --replicas=1
