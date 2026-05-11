@@ -321,4 +321,65 @@ For prod (M7+), these get replaced by sealed-secrets or Vault — same pattern, 
 
 ## FDE probe questions (M1 quiz)
 
-(to be filled in with quiz answers after M1 wrap)
+Attempted 2026-05-11. Score: 4/13 by strict count, but L3 (the hardest in actionable terms) was fully correct. The L1/L2/L4 gaps were diagnostic vocabulary, not missing experience — captured in detail at `Learning/Deep Dives/K8s Diagnostic Cheat Sheet - Triage, Isolation, Hypothesis Generation.md`.
+
+### L1 — Triage (CrashLoopBackOff pod, first 3 commands)
+
+**My answer:** `kubectl logs vn-postgres-1 -n vn-data` (or try ping).
+
+**Grade:** 🟡 1/3. Right instinct (logs is high-value), but missed:
+- `kubectl describe pod` belongs FIRST — events, exit code, last termination reason often solve it without logs
+- `--previous` flag on logs is the make-or-break — without it you read startup noise from the restart attempt, not what crashed
+- For operator-managed pods, also `kubectl describe cluster <name>` to see what CNPG thinks
+
+`ping` doesn't work on pod networks (ICMP blocked) — use `kubectl exec ... -- nc -zv host port` for reachability tests.
+
+### L2 — Isolation (`connection refused` despite Running pod)
+
+**My answer:** Not on same network / wrong username-password / connection max.
+
+**Grade:** 🟡 1/3. The "network" answer was the right *category* but two of three hypotheses don't match the error class:
+- `connection refused` is **TCP-level** = nothing listening on port. Rules out auth (`FATAL: password authentication failed`) and max-connections (`FATAL: too many clients`).
+- **The discipline:** read the error class FIRST, then filter hypotheses. Each error rules out 80% of possibilities.
+
+Correct hypothesis list for `connection refused`:
+1. Port-forward died (laptop sleep is the #1 cause)
+2. Pod is `Running` but `Ready: 0/1` (readinessProbe failing → no endpoints → no routing)
+3. Wrong service target (talking to `-rw` after failover — only relevant once we have replicas)
+
+### L3 — Fix (missed bucket, Job auto-cleaned)
+
+**My answer:** Direct exec into the pod and run `mc mb`; also add the new bucket line to the bootstrap Job and rerun.
+
+**Grade:** ✅ 2/2 — strong answer, both real-world flows captured.
+
+Two refinements:
+- Terminology: `kubectl exec`, not `ssh` — pods don't run sshd
+- **Jobs are immutable in most fields**. `kubectl apply` on a modified Job fails with `field is immutable`. The flow is: `kubectl delete job <name>` then `kubectl apply -f ...`. Helm handles this transparently — preview of M2.
+
+### L4 — War story (MinIO sometimes timing out, "nothing changed")
+
+**My answer:** File too big / too many concurrent writes. Check webapp logs. No experience.
+
+**Grade:** 🟡 1/5 layers covered. Reasonable app-layer guesses but stopped at one layer.
+
+**The real skill is layer-walking** — when stuck, enumerate per layer regardless of experience:
+
+| Layer | Hypotheses to enumerate |
+|---|---|
+| Storage | PVC full, disk slow, mount missing, inode exhaustion |
+| Network | DNS, endpoints, port-forward dead, Docker Desktop VM hiccup |
+| Process | Pod restarts, OOMKilled, resource limits unset, probe killing pod |
+| Application | Connection pool, request size, concurrent conflicts (← where I stopped) |
+| External | Clock skew, cert expired, upstream rate-limit, cluster restarted |
+
+Rank by `likely × cheap-to-check`. For "MinIO sometimes timeouts": **PVC disk full** is #1 — single `df -h` confirms or rules out.
+
+### What gets reinforced going into M2
+
+1. Always pair `describe pod` + `logs --previous` on crash investigations
+2. Filter hypotheses by error class before guessing
+3. Layer-walk when stuck — never stop after 1 hypothesis
+4. Read the READY column, not just STATUS — `Running` ≠ `Working`
+
+The Obsidian cheat-sheet has the full reference. M2 starts with Helm — which is exactly the territory where these muscles get exercised the most.
