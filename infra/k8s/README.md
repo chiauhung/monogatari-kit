@@ -52,3 +52,14 @@ cp infra/k8s/redis/secret.example.yaml infra/k8s/redis/secret.yaml
 ```
 
 For local dev, any non-empty password works (the cluster is only reachable from your laptop). For prod (M7+), these get replaced by sealed-secrets / Vault.
+
+## Pause/resume during breaks
+
+Quick scale-down (workloads off, control plane still running, PVCs preserved):
+
+```bash
+./scripts/cluster-down.sh    # scale Postgres + Redis + MinIO to 0
+./scripts/cluster-up.sh      # restore them
+```
+
+For a longer break (frees the k8s control plane ~600MB extra RAM), use Docker Desktop's Settings → Kubernetes → uncheck "Enable Kubernetes" instead. Re-enable when you come back.
