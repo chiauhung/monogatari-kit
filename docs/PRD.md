@@ -312,7 +312,8 @@ Based on [stack reference](./stack-reference.md) + 这次 6 个 driver 问题:
 | Hosting | **Kubernetes + Helm chart** — **Level B (strict self-host)** | 不用 cloud managed services. GKE 当 k8s control plane 是可以 (k8s 还是 portable layer), 但 Postgres/Redis/Storage/Auth 全在 cluster |
 | Ingress / TLS | **Nginx Ingress + cert-manager + Let's Encrypt** | 标准 self-host TLS |
 | Secrets | **Plain k8s secrets** (MVP); Vault / sealed-secrets defer | 起步阶段最小复杂度 |
-| Skipped (MVP) | i18n, Sentry, Pino, feature flags, GitOps (Argo CD), Prometheus/Grafana, network policies, HA replicas | 没痛点不加; 学习路径上后面再补 |
+| Skipped (MVP) | i18n, Sentry, feature flags, GitOps (Argo CD), Prometheus, network policies, HA replicas | 没痛点不加; 学习路径上后面再补 |
+| Observability (M5.5) | **Loki + Grafana + Vector/Promtail collector** | Self-host log aggregation. Survives pod death. Skipped at M1-M5, added when app logs become valuable |
 
 **Rationale for skipped slots:**
 - **i18n**: 中英 mix 暂时只服务自己, MVP 不做 multi-language
@@ -388,6 +389,7 @@ Based on [stack reference](./stack-reference.md) + 这次 6 个 driver 问题:
 | 3 | Project + collab + recycle bin | Create project, invite teammate, soft-delete, restore from bin |
 | 4 | Story tree + chapter editor + soft-lock | DAG visible in xyflow; edit chapter text; "X is editing" badge appears |
 | 5 | Storyboard + character + Nano Banana queue | Generate character image, see job in BullMQ, image lands in MinIO, displays in storyboard cell |
+| 5.5 | Observability (Loki + Grafana + collector) | Deploy Loki + Grafana + Vector/Promtail DaemonSet in `vn-observability` ns; pod logs survive pod death; Grafana dashboard shows app + worker logs |
 | 6 | Prompt mgmt + OpenRouter streaming | Edit `chapter_gen` prompt; click generate; tokens stream into editor; PromptRun row logged |
 | 7 | GKE 部署 + ingress + TLS | Helm install on real GKE cluster; cert-manager issues Let's Encrypt cert; public URL works |
 

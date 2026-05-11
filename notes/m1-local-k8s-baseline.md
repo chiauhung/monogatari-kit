@@ -2,7 +2,7 @@
 
 **Goal (per [PRD §9](../docs/PRD.md#9-process--learning-plan)):** Docker Desktop k8s up; Postgres (CNPG) + Redis + MinIO running in cluster; can `kubectl exec` into each.
 
-**Status:** 🚧 In progress (Postgres ✅ · Redis ✅ · MinIO pending)
+**Status:** ✅ All services up. Quiz pending.
 
 ---
 
@@ -179,9 +179,105 @@ kubectl --context docker-desktop -n vn-cache exec vn-redis-0 -- \
 
 Auth round-trip works. SET/GET works. AOF mode confirmed (`appendonly: yes`, `/data/appendonlydir/` exists on the PVC).
 
-## Step 5 — MinIO (pending)
+## Step 5 — MinIO (raw StatefulSet + bootstrap Job)
 
-To be added.
+Same skip-the-operator reasoning as Redis: single-node MinIO is fine for dev, an operator brings distributed-mode complexity we don't need yet.
+
+Pinned to `quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z` and `quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z` for reproducibility.
+
+### Manifests (5 files)
+
+- `secret.yaml` — root credentials (`rootUser` / `rootPassword`)
+- `statefulset.yaml` — 1 replica, multi-port (9000 S3 API + 9001 console), HTTP health probes, 5Gi PVC
+- `service.yaml` — headless, exposes **both ports** with named entries (`s3-api`, `console`)
+- `bucket-bootstrap-job.yaml` — one-shot `Job` that creates `vn-characters` + `vn-uploads` buckets
+- `secret.example.yaml` — committed template; real `secret.yaml` gitignored (same pattern as Postgres + Redis)
+
+### New k8s concepts that surfaced
+
+| Concept | Where it appeared |
+|---|---|
+| Multi-port container + service | MinIO exposes 9000 (S3 API) + 9001 (console); both named in container `ports:` and service `ports:` |
+| HTTP probes (vs exec) | `/minio/health/ready` for readiness, `/minio/health/live` for liveness — cheaper than exec; subtle semantic difference (ready can refuse traffic when cluster degraded, live just checks process) |
+| `Job` resource | Run-to-completion workload. `backoffLimit: 3`, `ttlSecondsAfterFinished: 600`, `restartPolicy: OnFailure` |
+| Idempotent bootstrap | `mc mb --ignore-existing` — re-running the Job won't error if buckets already exist. **Idempotency is the #1 property of good bootstrap scripts.** |
+| Cross-namespace FQDN | Job in `vn-storage` connecting via `http://vn-minio.vn-storage.svc.cluster.local:9000` — full FQDN deliberately, building the muscle for when M2's app in `vn-app` talks to MinIO |
+| Race-condition handling | Job's container loops `mc alias set ... || sleep 2` until MinIO responds. Same lesson as the CNPG webhook race, but defended in script |
+
+### Reconciliation timeline
+
+```
+0s    apply all 4 manifests
+0s    StatefulSet pod (vn-minio-0) starts pulling image
+0s    Bootstrap Job pod starts — immediately tries to connect
+0s    PVC requested, hostpath provisioner binds it
+~10-20s   pod scheduled, image pulled, MinIO process starts listening
+~22s   Job's retry loop succeeds, creates buckets, exits 0
+10min later   Job + pod auto-cleaned by ttlSecondsAfterFinished
+```
+
+The Job log (preserved at [`logs/m1-minio-bucket-bootstrap.log`](./logs/m1-minio-bucket-bootstrap.log)) shows ~10 retry cycles before MinIO answered — exactly as designed.
+
+### Smoke test
+
+```bash
+kubectl --context docker-desktop -n vn-storage exec vn-minio-0 -- sh -c \
+  'mc alias set local http://127.0.0.1:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null \
+   && mc ls local'
+# → vn-characters/ + vn-uploads/
+
+echo "hello" | mc pipe local/vn-uploads/test.txt
+mc cat local/vn-uploads/test.txt   # → hello
+mc rm local/vn-uploads/test.txt
+```
+
+All round-trip ✅. Both buckets ready for M5 (character images) and general uploads.
+
+### Browser console via port-forward
+
+MinIO has a UI on port 9001 — the FDE pattern to see it without changing any manifest:
+
+```bash
+kubectl --context docker-desktop -n vn-storage port-forward svc/vn-minio 9001:9001
+# → tunnel: localhost:9001 ↔ vn-minio-0:9001
+```
+
+Open `http://localhost:9001`, log in with root creds, see the buckets. Tunnel exists only while the command runs. Nothing exposed to the internet.
+
+**`kubectl port-forward` is one of the most-used FDE debugging tricks:**
+- Open a UI not yet behind Ingress (MinIO console, Grafana, Argo CD)
+- Connect a local DB client to in-cluster Postgres
+- Test an internal API without exposing it
+
+---
+
+## Side-quest: persistent log strategy
+
+Watching the bootstrap Job emit beautiful logs that would vanish in 10 minutes raised the real question: **where do logs go when pods vanish?**
+
+### The problem
+
+Pods log to stdout/stderr. The kubelet captures into local files on the node. **When the pod dies, those files get garbage-collected within minutes.** `kubectl logs` is just reading those local files. Restart → logs gone. Pod hop to another node → unreachable. By design — k8s does compute orchestration, not observability.
+
+### The real pattern (deferred to M5.5)
+
+```
+Pod stdout/stderr
+    ↓
+kubelet writes /var/log/pods/...   (per-node, ephemeral)
+    ↓
+Log collector DaemonSet (Vector / Fluent Bit / Promtail)
+    ↓
+Durable backend (Loki / Elasticsearch / ClickHouse / Cloud Logging)
+```
+
+### Decision: defer the full stack, capture meaningful logs now
+
+Installing Loki + Grafana + collector on a single-node Docker Desktop would cost ~500MB RAM — unnecessary cost when the only live workload is bootstrap Jobs running once.
+
+**For now:** any Job whose output matters gets saved to `notes/logs/` before TTL fires. The repo IS the log store for milestone artifacts.
+
+**Scheduled formally:** added **M5.5 — Observability (Loki + Grafana + Vector/Promtail collector)** to [PRD §9](../docs/PRD.md#9-process--learning-plan), between current M5 and M6. Carves out the work so it's tracked, not forgotten.
 
 ---
 
@@ -210,14 +306,19 @@ For prod (M7+), these get replaced by sealed-secrets or Vault — same pattern, 
 - **Context discipline** — never apply to the wrong cluster (Step 0)
 - **Operator pattern** — CRDs as new vocabulary, operator as reconciler, predicting what gets generated (Step 3)
 - **Webhook race condition** — operator readiness ≠ pod readiness (Step 2)
-- **StatefulSet from scratch** — `volumeClaimTemplates`, headless services, ordinal naming (Step 4)
-- **When NOT to use an operator** — raw manifests sometimes simpler (Step 4 framing)
+- **StatefulSet from scratch** — `volumeClaimTemplates`, headless services, ordinal naming (Steps 4, 5)
+- **When NOT to use an operator** — raw manifests sometimes simpler (Steps 4, 5)
+- **Multi-port containers** — named ports, HTTP probes (Step 5)
+- **`Job` for bootstrap** — idempotency, TTL, retry loops against eventually-ready services (Step 5)
+- **`kubectl port-forward`** — temporary localhost ↔ in-cluster tunnel (Step 5)
+- **Cross-namespace FQDN** — `svc.cluster.local` discipline before it strictly matters (Step 5)
 - **Secret hygiene** — gitignore patterns, templates, never plaintext in public history (Side-quest)
+- **Log persistence** — accept ephemerality at MVP; schedule real stack at M5.5 (Side-quest)
 
 ## Related deep-dives in Obsidian
 
 - `Learning/Deep Dives/Kubernetes Vocabulary - CRD, Operator, PVC, StatefulSet.md`
 
-## FDE probe questions (to attempt at M1 wrap)
+## FDE probe questions (M1 quiz)
 
-(to be filled in after MinIO is up and M1 is "done")
+(to be filled in with quiz answers after M1 wrap)
