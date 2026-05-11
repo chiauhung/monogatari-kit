@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vn-redis-config
+  namespace: vn-cache
+data:
+  redis.conf: |
+    bind 0.0.0.0
+    protected-mode yes
+    port 6379
+
+    # AOF persistence — durable, every write flushed per second
+    appendonly yes
+    appendfsync everysec
+    dir /data
+
+    # Modest memory cap for local dev; eviction = LRU when full
+    maxmemory 256mb
+    maxmemory-policy allkeys-lru

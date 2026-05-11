@@ -23,6 +23,8 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+# Allow milestone artifact logs deliberately captured under notes/logs/
+!notes/logs/*.log
 
 # Editor
 .vscode/
@@ -40,6 +42,12 @@ coverage/
 # K8s local
 kubeconfig.local
 *.kubeconfig
+
+# K8s secrets — never commit real Secret manifests
+# Commit `*.example.yaml` templates instead
+infra/k8s/**/secret.yaml
+infra/k8s/**/*-secret.yaml
+!infra/k8s/**/*.example.yaml
 
 # Helm
 charts/*.tgz
