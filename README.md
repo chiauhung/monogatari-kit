@@ -1,30 +1,56 @@
-# VN Authoring Platform
+# monogatari-kit
 
-Collaborative authoring platform for branching interactive video stories. Spinoff from sibling `../vn-poc/` — replaces the manual `story.json` editing pain with a real UI, multi-user collab, and AI-assisted authoring.
+A **collaborative authoring platform for branching interactive video stories** (visual novels).
+
+Author writes an outline → grows a DAG of branches → fills in chapter text → produces a storyboard. AI assists drafting throughout. Characters are first-class entities with AI-generated outfit variants. Output eventually feeds a video pipeline targeting Steam.
+
+Spinoff from sibling repo [`vn-poc`](#origin) — original POC validated the branching VN format on Kling + Cloud Run, with stories hand-edited as `story.json`. Hand-editing didn't scale; this repo replaces that pain with a real authoring UI.
 
 ## Status
 
-- **Stage:** Scaffolding (M0 done — PRD locked, folder + docs created)
-- **Next milestone:** M1 — Local k8s baseline (Postgres + Redis + MinIO running on Docker Desktop k8s)
+- **Stage:** M1 in progress — local k8s baseline
+- **Done:** M0 scaffold, PRD locked (v3, 2026-05-04)
+- **Up next:** M2 Helm chart skeleton + BetterAuth login page
+
+## Tech stack (locked — see [PRD §6](./docs/PRD.md#6-tech-stack-locked))
+
+Next.js · tRPC · Drizzle · Postgres (CNPG) · BetterAuth · BullMQ · Redis · MinIO · Tailwind · TanStack Query · Zustand · xyflow · Vercel AI SDK · OpenRouter · Gemini Flash Image
+
+**Hosting:** Kubernetes (Helm chart) — **Level B strict self-host**. No managed runtime services. GKE allowed as k8s control plane only (M7).
+
+## Milestones
+
+| # | Milestone | Status |
+|---|-----------|--------|
+| 0 | Scaffold + PRD | ✅ Done |
+| 1 | Local k8s baseline (CNPG + Redis + MinIO) | 🚧 In progress |
+| 2 | Helm chart skeleton + auth | |
+| 3 | Project + collab + recycle bin | |
+| 4 | Story tree + chapter editor + soft-lock | |
+| 5 | Storyboard + character + image queue | |
+| 6 | Prompt mgmt + OpenRouter streaming | |
+| 7 | GKE deploy + ingress + TLS | |
+
+Full milestone definitions in [PRD §9](./docs/PRD.md#9-process--learning-plan).
 
 ## Documents
 
 - [`docs/PRD.md`](./docs/PRD.md) — Product requirements, ERD, tech stack, milestones, learning plan
-- [`docs/stack-reference.md`](./docs/stack-reference.md) — Fullstack TS slot reference (the mental model behind stack picks)
+- [`docs/stack-reference.md`](./docs/stack-reference.md) — Fullstack TS slot reference
+- [`infra/k8s/README.md`](./infra/k8s/README.md) — Local k8s manifests + apply order
+- [`notes/`](./notes/) — Build journey, milestone by milestone (FDE training log)
 - [`CLAUDE.md`](./CLAUDE.md) — Context for AI-assisted dev sessions
 
-## Tech stack (locked, see [PRD §6](./docs/PRD.md#6-tech-stack-locked))
+## FDE training framing
 
-Next.js · tRPC · Drizzle · Postgres (CNPG) · BetterAuth · BullMQ · Redis · MinIO · Tailwind · TanStack Query · Zustand · xyflow · Vercel AI SDK · OpenRouter · Nano Banana
+This repo doubles as a **Forward Deployed Engineer training ground**: the strict self-host Level B policy means hands-on with Postgres ops, Redis, k8s networking, TLS, auth — none of it abstracted by managed services. The product is real and worth shipping, but the FDE muscles are the side-quest worth its own log.
 
-**Hosting:** Kubernetes (Helm chart) — **Level B strict self-host**. No vendor SaaS for runtime services. GKE allowed as k8s control plane only (M7).
+See [`notes/`](./notes/) for the chronological build journey, including the operator install race condition, CRD vocabulary, StatefulSet ordinal surprises, and other things you only learn by running into them.
 
-## Why this exists
+## Origin
 
-1. Replaces hand-editing `story.json` from vn-poc
-2. Training ground for fullstack TS stack (every slot exercised)
-3. Training ground for **Forward Deployed Engineer** skills — strict self-host means hands-on with Postgres, Redis, k8s networking, TLS, auth (none of it abstracted by managed services)
+Spinoff from sibling repo `vn-poc` — original POC validated the branching VN format on Kling + Cloud Run, with stories hand-edited as `story.json`. Hand-editing didn't scale; this repo replaces that pain with a real authoring UI, while also being the vehicle for FDE training.
 
-## Dev setup
+## License
 
-TBD — filled in during M1.
+MIT
