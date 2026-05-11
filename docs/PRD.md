@@ -3,7 +3,7 @@
 **Status:** v3 — final (locked 2026-05-04)
 **Date:** 2026-05-01 (created), updated 2026-05-04
 **Author:** chiauhung
-**Related:** vn-poc (sibling repo at `../vn-poc/`) · [Stack reference](./stack-reference.md)
+**Related:** [Stack reference](./stack-reference.md)
 
 ---
 
@@ -12,7 +12,7 @@
 A web platform for **collaborative authoring of branching interactive video stories**. Author 写大纲 → 拉分支 → 写章节 → 出分镜; 系统 AI-assist 生草稿, user 控制 edit. 角色是 first-class object, 用 Nano Banana 生图 (含不同 outfit). 输出最后喂给 video pipeline (phase 2) — 终点是出 Steam game.
 
 **Why this exists (3 layers):**
-- vn-poc 验证了 format. 手编 `story.json` 不 scale. 这平台替掉那个痛点.
+- 之前 POC 验证了 format. 手编 narrative JSON 不 scale. 这平台替掉那个痛点.
 - User 学 fullstack TS stack 的载体 (slot-filling exercise).
 - **User 转 FDE (Forward Deployed Engineer) 的训练场** — 强制走 Level B 自托管 K8s, 触摸 Postgres ops / Redis / k8s networking / TLS / auth / logs 这些 managed service 平时藏起来的层.
 
@@ -341,7 +341,7 @@ Based on [stack reference](./stack-reference.md) + 这次 6 个 driver 问题:
 - Video generation (bottom half) — 详细 spec 待定
 - State / 数值 / unlock conditions layered on top of stable DAG
 - Path simulator — walk DAG 看哪个 ending 解锁哪些 affinity scenes
-- 把 vn-poc engine 端进来当 player runtime preview
+- 把之前 POC 的 engine 端进来当 player runtime preview
 
 ### Later (想想就好)
 - Realtime collab (Yjs / Liveblocks)

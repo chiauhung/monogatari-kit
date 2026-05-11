@@ -4,8 +4,6 @@ A **collaborative authoring platform for branching interactive video stories** (
 
 Author writes an outline → grows a DAG of branches → fills in chapter text → produces a storyboard. AI assists drafting throughout. Characters are first-class entities with AI-generated outfit variants. Output eventually feeds a video pipeline targeting Steam.
 
-Spinoff from sibling repo [`vn-poc`](#origin) — original POC validated the branching VN format on Kling + Cloud Run, with stories hand-edited as `story.json`. Hand-editing didn't scale; this repo replaces that pain with a real authoring UI.
-
 ## Status
 
 - **Stage:** M1 in progress — local k8s baseline
@@ -46,10 +44,6 @@ Full milestone definitions in [PRD §9](./docs/PRD.md#9-process--learning-plan).
 This repo doubles as a **Forward Deployed Engineer training ground**: the strict self-host Level B policy means hands-on with Postgres ops, Redis, k8s networking, TLS, auth — none of it abstracted by managed services. The product is real and worth shipping, but the FDE muscles are the side-quest worth its own log.
 
 See [`notes/`](./notes/) for the chronological build journey, including the operator install race condition, CRD vocabulary, StatefulSet ordinal surprises, and other things you only learn by running into them.
-
-## Origin
-
-Spinoff from sibling repo `vn-poc` — original POC validated the branching VN format on Kling + Cloud Run, with stories hand-edited as `story.json`. Hand-editing didn't scale; this repo replaces that pain with a real authoring UI, while also being the vehicle for FDE training.
 
 ## License
 
