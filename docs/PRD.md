@@ -295,7 +295,7 @@ Based on [stack reference](./stack-reference.md) + 这次 6 个 driver 问题:
 | Validation | **Zod** | 不商量 |
 | Database | **Postgres** | DAG 关系查询、soft-delete TTL、collab join — relational 赢 |
 | ORM | **Drizzle** | 贴近 SQL; migrations 干净 |
-| Auth | **BetterAuth** (Next.js in-app library) | Level B self-host. 跑在 app 进程内, session/邀请 email 都自己管. 不用 Clerk (vendor). |
+| Auth | **Dev: stubbed user picker · Prod: Cloud Run IAM** (Google Identity) | No auth library. Dev mode has a "switch user" picker for multi-user testing; prod gates the URL via Cloud Run IAM and maps the Google identity to a `User` row. The data model (User/Membership) is preserved; only the auth plumbing differs per env. |
 | Object storage | **MinIO** (S3-compatible, self-host) | Level B. App 用 `@aws-sdk/client-s3` 连, endpoint 换 GCS/S3 不动代码 |
 | Server state | **TanStack Query** | Mutation UX 比 SWR 好 (editor 重 mutation) |
 | Client state | **Zustand + Immer** | Editor draft state |
@@ -309,7 +309,8 @@ Based on [stack reference](./stack-reference.md) + 这次 6 个 driver 问题:
 | Image gen | **Gemini Flash Image (Nano Banana)** | per spec — 经 queue, 异步 |
 | Job queue | **BullMQ + Redis** (self-host in cluster) | Image gen 异步; Redis 也 cluster 内 |
 | Database hosting | **CloudNativePG operator** (Postgres in cluster) | Level B self-host; learn Postgres ops |
-| Hosting | **Kubernetes + Helm chart** — **Level B (strict self-host)** | 不用 cloud managed services. GKE 当 k8s control plane 是可以 (k8s 还是 portable layer), 但 Postgres/Redis/Storage/Auth 全在 cluster |
+| Hosting (dev) | **Kubernetes + Helm chart** — **Level B (strict self-host)** on Docker Desktop k8s | 不用 cloud managed services 在 dev. Touch every layer for FDE training. 详见 §6.1 production split |
+| Hosting (prod) | **Cloud Run + managed-lite** (see §6.1) | 3-user app, ~$0-5/mo. Dev/prod boundary is the deployable artefact (Docker image), not the runtime |
 | Ingress / TLS | **Nginx Ingress + cert-manager + Let's Encrypt** | 标准 self-host TLS |
 | Secrets | **Plain k8s secrets** (MVP); Vault / sealed-secrets defer | 起步阶段最小复杂度 |
 | Skipped (MVP) | i18n, Sentry, feature flags, GitOps (Argo CD), Prometheus, network policies, HA replicas | 没痛点不加; 学习路径上后面再补 |
@@ -324,6 +325,54 @@ Based on [stack reference](./stack-reference.md) + 这次 6 个 driver 问题:
 **Streaming vs Queue 分工:**
 - **文本 gen (chapter, storyboard)** → **streaming** via Vercel AI SDK + OpenRouter. 每个 HTTP connection 独立, 不会因为多人 click 互相 block. User 看见字一个字出来.
 - **图像 gen (Nano Banana)** → **queue** via BullMQ. Response 是 binary, 不能 stream; API 慢 (10-30s) + rate-limited. User click "generate" → 即时返回 job_id → poll 或 SSE 看进度 → done 显示.
+
+---
+
+## 6.1 Production Hosting (dev/prod split)
+
+**The reconciliation:** Level B strict self-host is the **local-dev policy** (where FDE training happens). Production deployment is a separate concern, optimized for cost at the project's actual scale (~3 users). The dev environment exercises every k8s muscle; the production environment exercises **building a system that can run anywhere** — which is itself an FDE skill.
+
+**Production target cost:** ~$0-5/mo + optional domain (~$12/yr). Updated 2026-05-11.
+
+| Component | Dev (Level B self-host)             | Production (managed-lite)                                | Boundary                                  |
+| --------- | ----------------------------------- | -------------------------------------------------------- | ----------------------------------------- |
+| App       | Next.js in `vn-app` k8s namespace   | **Cloud Run** (autoscale to 0, pay-per-request)          | Docker image; same image runs both        |
+| Auth      | **Stubbed user picker** (env-flagged dev only)  | **Cloud Run IAM** (Google Identity → User row lookup)   | Both write to same `User` table; auth plumbing differs |
+| Database  | CNPG Postgres in `vn-data`          | **Neon** (free tier, autosuspend on idle)                | DSN env var; Drizzle schema unchanged     |
+| Job queue | Self-host Redis + BullMQ            | **Upstash Redis** (free tier, 10k req/day) + BullMQ      | DSN env var; BullMQ code unchanged        |
+| Object storage | MinIO in `vn-storage`          | **GCS bucket** via `@aws-sdk/client-s3`                  | Endpoint env var; aws-sdk code unchanged  |
+| TLS / Ingress | Nginx + cert-manager             | **Cloud Run's built-in `*.run.app` TLS** (free)          | Custom domain optional, $12/yr if wanted  |
+| Observability (post-M5.5) | Loki + Grafana in-cluster | **Cloud Logging** (free tier ~50GB/mo)                   | Structured stdout; backend swap is config |
+| Secrets   | Plain k8s `Secret`                  | **Cloud Run env vars** (or Secret Manager for sensitive) | Same names, different injection           |
+
+**The rule for app code:** every external dependency reads from env vars. Same image runs dev (local cluster) or prod (Cloud Run); only the env file changes. This is the **12-factor app** principle, applied honestly.
+
+**What stays the same in both environments:**
+- Postgres schema (Drizzle migrations work identically)
+- BullMQ job code (Upstash speaks the Redis protocol)
+- S3-compatible object storage code (aws-sdk works on both MinIO and GCS)
+- The 4-step authoring flow (大纲/分支树/章节/分镜)
+- Every line of business logic
+
+**What changes between dev and prod:**
+- Auth code branch: stub picker in dev, Cloud Run IAM in prod
+- Connection strings + endpoints (all via env)
+- Observability backend (free in both)
+
+**Auth note — why no library:**
+The original PRD picked BetterAuth for in-process session management. After thinking through actual use, the **multi-tenant data model** (`User`, `Membership`, `Project` tables — see ERD §3) is the real thing we need; the auth library is just plumbing on top. For 3-user MVP, dev tests via a stub picker (`?as=alice` query param + cookie), prod uses Cloud Run IAM. Both write to the same `User` table. Saves a non-trivial dependency without losing functionality. If the user count grows past invite-only, revisit (Clerk, Stytch, NextAuth all viable replacements).
+
+**Why not just deploy the k8s stack to GKE?**
+- GKE Standard control plane = $73/mo fixed, never zero
+- GKE Autopilot would work (~$60-80/mo) but still 10x the cost for 3 users
+- The PRD's Level B policy was about **learning by self-hosting**, not about ideological purity in production
+- Real FDE work is "ship to whatever infra the customer has" — Cloud Run for a 3-user indie project is *the right answer*, not a compromise
+
+**Phase 2 (if user count grows past ~100):**
+- Move database to Cloud SQL or Crunchy Bridge if Neon autosuspend latency becomes user-visible
+- Add Cloud CDN in front of Cloud Run if media serving gets heavy
+- Consider GKE Autopilot if the workload mix outgrows Cloud Run's request-based billing
+- **Not before then** — premature scale optimization is more expensive than over-provisioning
 
 ---
 
@@ -361,12 +410,12 @@ Based on [stack reference](./stack-reference.md) + 这次 6 个 driver 问题:
 | ~~2~~ | ~~AI text provider~~ | ✅ **OpenRouter** (closed) |
 | ~~3~~ | ~~K8s portability level~~ | ✅ **Level B strict self-host** (closed) |
 | ~~4~~ | ~~K8s cluster — 本地起步 + 后期 GKE?~~ | ✅ **Docker Desktop k8s 本地, GKE on M7** (closed 2026-05-07) |
-| ~~5~~ | ~~Auth library~~ | ✅ **BetterAuth** (closed) |
+| ~~5~~ | ~~Auth library~~ | ✅ **No auth library** — dev stub + Cloud Run IAM in prod (revised 2026-05-11; was BetterAuth) |
 | 6 | Nano Banana per-image cost & quota | 在做 5.3 之前估 |
 | 7 | Soft-lock TTL — 60s? 120s? 5min? | 先 60s, 用了再 tune |
 | 8 | Storyboard "shot" 描述长度 — 自由文本 vs 限长? | 先自由文本, 看 AI 质量 |
 | 9 | OpenRouter default model 选哪个 per-prompt? | Scaffold 阶段, 可 per-prompt 配 |
-| 10 | Domain name (for ingress + TLS)? | Milestone 7 (GKE 部署) 之前 |
+| ~~10~~ | ~~Domain name (for ingress + TLS)?~~ | ✅ **Defer** — Cloud Run's `*.run.app` URL is fine for MVP; custom domain optional ($12/yr) post-launch if wanted (closed 2026-05-11) |
 
 ---
 
@@ -385,13 +434,13 @@ Based on [stack reference](./stack-reference.md) + 这次 6 个 driver 问题:
 | # | Milestone | What "done" looks like |
 |---|-----------|------------------------|
 | 1 | Local k8s baseline | Docker Desktop k8s up; Postgres (CNPG) + Redis + MinIO running; can `kubectl exec` into each |
-| 2 | Helm chart skeleton | `helm install vn-platform ./chart` deploys app shell + BetterAuth login page works |
+| 2 | Helm chart skeleton + dev user picker | `helm install vn-platform ./chart` deploys app shell; dev-mode user picker (`?as=alice`) lets you switch personas locally |
 | 3 | Project + collab + recycle bin | Create project, invite teammate, soft-delete, restore from bin |
 | 4 | Story tree + chapter editor + soft-lock | DAG visible in xyflow; edit chapter text; "X is editing" badge appears |
 | 5 | Storyboard + character + Nano Banana queue | Generate character image, see job in BullMQ, image lands in MinIO, displays in storyboard cell |
 | 5.5 | Observability (Loki + Grafana + collector) | Deploy Loki + Grafana + Vector/Promtail DaemonSet in `vn-observability` ns; pod logs survive pod death; Grafana dashboard shows app + worker logs |
 | 6 | Prompt mgmt + OpenRouter streaming | Edit `chapter_gen` prompt; click generate; tokens stream into editor; PromptRun row logged |
-| 7 | GKE 部署 + ingress + TLS | Helm install on real GKE cluster; cert-manager issues Let's Encrypt cert; public URL works |
+| 7 | Cloud Run prod deploy (per §6.1) | App on Cloud Run with Google IAM auth; Neon Postgres + Upstash Redis + GCS connected via env; same Docker image as dev runs in prod; public `*.run.app` URL works |
 
 ### Learning loop — quiz after each milestone
 
